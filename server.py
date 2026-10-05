@@ -104,7 +104,7 @@ class CalculatorHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     host = os.environ.get("CALCULATOR_HOST", "127.0.0.1")
-    port = int(os.environ.get("CALCULATOR_PORT", "8000"))
+    port = int(os.environ.get("CALCULATOR_PORT", os.environ.get("PORT", "8000")))
     server = ThreadingHTTPServer((host, port), CalculatorHandler)
     print(f"Calculator backend listening at http://{host}:{port}")
     print(f"SQLite database: {DB_PATH}")

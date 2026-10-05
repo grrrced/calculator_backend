@@ -24,7 +24,8 @@ python3 server.py
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `CALCULATOR_HOST` | `127.0.0.1` | 监听地址；需要外部访问时设为 `0.0.0.0` |
-| `CALCULATOR_PORT` | `8000` | HTTP 监听端口 |
+| `CALCULATOR_PORT` | 优先读取本变量，其次 `PORT`，最后 `8000` | HTTP 监听端口 |
+| `PORT` | 未设置 | 云平台提供的 HTTP 监听端口；由后端自动读取 |
 | `CALCULATOR_DB_PATH` | 本仓库下的 `data/calculator.sqlite3` | SQLite 数据库路径；所在目录需可写 |
 
 macOS/Linux 示例，在仓库根目录执行：
@@ -33,13 +34,13 @@ macOS/Linux 示例，在仓库根目录执行：
 CALCULATOR_HOST=0.0.0.0 CALCULATOR_PORT=8000 CALCULATOR_DB_PATH=./data/calculator.sqlite3 python3 server.py
 ```
 
-相对数据库路径相对于启动命令的当前目录解析；线上建议使用持久卷中的绝对路径。云平台如提供 `PORT` 环境变量，需要在启动命令中将它映射到 `CALCULATOR_PORT`：
+相对数据库路径相对于启动命令的当前目录解析；线上建议使用持久卷中的绝对路径。云平台如提供 `PORT` 环境变量，后端会自动使用，不需要额外映射。非容器部署时可执行：
 
 ```bash
-CALCULATOR_HOST=0.0.0.0 CALCULATOR_PORT="$PORT" python3 server.py
+CALCULATOR_HOST=0.0.0.0 python3 server.py
 ```
 
-仅在平台确实提供 `PORT` 时使用上述命令。`0.0.0.0` 用于监听，实际访问时应使用服务器 IP 或部署平台分配的域名。
+`0.0.0.0` 用于监听，实际访问时应使用服务器 IP 或部署平台分配的域名。
 
 ## API
 
@@ -87,6 +88,34 @@ SQLite 数据文件、运行缓存和本地环境配置由 `.gitignore` 排除�
 
 本项目是课程演示应用，历史记录共用一张表，接口未实现用户登录和权限隔离。部署后的调用者可读取和删除共享历史。
 
+### 容器运行
+
+本仓库包含 `Dockerfile`，无需安装依赖。镜像默认监听 `0.0.0.0:8000`，数据库路径为 `/data/calculator.sqlite3`。在仓库根目录执行：
+
+```bash
+docker build -t calculator-backend .
+docker volume create calculator-data
+docker run --name calculator-backend --rm -p 8000:8000 \
+  --mount source=calculator-data,target=/data \
+  calculator-backend
+```
+
+访问 `http://127.0.0.1:8000/api/health` 检查服务。必须保留并挂载 `calculator-data` 卷，后续启动使用同一个卷才能读取原有历史；只保留镜像不能保存历史。
+
+### Railway 等容器平台
+
+以下是部署步骤，配置文件本身不代表服务已经上线：
+
+1. 在平台中从 GitHub 导入 `grrrced/calculator_backend` 仓库，使用仓库根目录的 `Dockerfile` 构建。无须另设构建命令或启动命令。
+2. 为该服务添加持久卷，挂载目录设为 `/data`。确认变量 `CALCULATOR_DB_PATH=/data/calculator.sqlite3`；Dockerfile 已提供此默认值。若所选套餐不能挂载持久卷，请先选用支持持久存储的部署方式。
+3. 保留平台提供的 `PORT`，不要同时设置固定的 `CALCULATOR_PORT`。镜像已设置 `CALCULATOR_HOST=0.0.0.0`。
+4. 配置健康检查路径 `/api/health`。部署成功后启用平台的公开网络访问并生成 HTTPS 域名；若平台询问目标端口，填服务实际使用的 `PORT`。
+5. 打开 `https://平台分配的后端域名/api/health`，应返回 `{"success":true,"service":"calculator-backend"}`。
+6. 将前端的 `window.CALCULATOR_API_BASE` 设置为 `https://平台分配的后端域名/api`，再部署前端。提交作业时提供前端页面地址，老师可直接打开计算器。
+7. 在前端计算一次并查看历史，再重启后端，确认原有记录仍可查询，以核验持久卷配置。
+
+无需自行购买域名，平台生成的 HTTPS 域名即可用于演示。是否需要付费取决于所选平台的当前套餐、试用额度及持久卷条件；以上步骤不会自动开通或购买服务。
+
 ## 测试
 
 在本仓库根目录执行：
@@ -102,6 +131,8 @@ python3 -m unittest discover -s tests -v
 ```text
 .
 ├── .gitignore
+├── .dockerignore
+├── Dockerfile            # 容器构建；/data 需挂载持久卷
 ├── README.md
 ├── codestyle.md           # 代码规范
 ├── server.py              # HTTP 路由、JSON 和 CORS
